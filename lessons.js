@@ -21,10 +21,6 @@ export const LESSONS = [
     text: 'チェスは 8×8 の盤で、白と黒が 1 手ずつ交代で指します。駒は 6 種類。相手のキングをつかまえたら勝ちです。',
     tasks: [
       { q: '先に指すのは？', fen: START, goal: 'quiz', choices: ['白', '黒'], answer: 0 },
-      { q: '盤の右下の升の色は？', fen: START, goal: 'quiz', choices: ['明るい色', '暗い色'], answer: 0,
-        hint: '盤は右下が明るい升になるように置く。', hintSq: ['h1'] },
-      { q: '白のクイーンはどの升に置く？', fen: START, goal: 'quiz', choices: ['自分と同じ色（明るい）の升', '暗い升'], answer: 0,
-        hint: 'クイーンは自分の色の升に。', hintSq: ['d1'] },
     ],
   },
   {
@@ -169,7 +165,7 @@ export const LESSONS = [
     id: 'value', ch: 4, title: '駒の価値',
     text: '駒の強さの目安は、ポーン 1、ナイト 3、ビショップ 3、ルーク 5、クイーン 9。取り合いでは、この数で得か損かを考えます。',
     tasks: [
-      { q: 'ルークとナイト、大きいのは？', fen: START, goal: 'quiz', choices: ['ルーク', 'ナイト', '同じ'], answer: 0 },
+      { q: 'ルークとナイト、価値が大きいのは？', fen: START, goal: 'quiz', choices: ['ルーク', 'ナイト', '同じ'], answer: 0 },
       { q: 'いちばん得になる駒を取ろう', fen: '7k/8/5r2/2p5/4N3/8/8/6K1 w - - 0 1', goal: 'steps',
         steps: [{ ok: ['e4f6'] }], hint: '取れる駒の中で、いちばん価値が大きいのは？', hintSq: ['f6'], sol: ['e4f6'] },
       { q: '損をしない取り方は？', fen: '6k1/8/4p3/3p4/n7/8/8/3Q2K1 w - - 0 1', goal: 'steps',
