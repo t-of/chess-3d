@@ -51,5 +51,29 @@ for (const L of LESSONS) {
     });
   });
 }
+// reply つきの steps: ok の手をどれで指しても reply が合法で、最後の段に正解の手が残るか。
+// 基本のメイト（ch 5）は、reply が黒の唯一の合法手であることも見る
+for (const L of LESSONS) L.tasks.forEach((t, i) => {
+  if (t.goal !== 'steps' || !t.steps.some((x) => x.reply)) return;
+  const where = `${L.id}#${i + 1} 分岐`;
+  const go = (s, k) => {
+    const st = t.steps[k];
+    if (k === t.steps.length - 1) {
+      if (!moves(s).some((m) => judgeStep(st, s, m).ok)) fail(where, '最後の段に正解がない');
+      return;
+    }
+    for (const u of st.ok) {
+      const m = moves(s).find((x) => toUci(x) === u);
+      if (!m) { fail(where, `${u} が合法でない`); continue; }
+      const n = apply(s, m);
+      if (!st.reply) { go({ ...n, turn: 'w', ep: -1 }, k + 1); continue; }
+      const legal = moves(n).map(toUci);
+      if (!legal.includes(st.reply)) { fail(where, `${u} のあと reply ${st.reply} が合法でない`); continue; }
+      if ((L.id === 'mate-q' || L.id === 'mate-r') && legal.length !== 1) fail(where, `${u} のあと黒の手が 1 つではない`);
+      go(apply(n, moves(n).find((x) => toUci(x) === st.reply)), k + 1);
+    }
+  };
+  go(fromFEN(t.fen), 0);
+});
 console.log(bad ? `${bad} 件 NG` : `OK（${LESSONS.length} レッスン、${n} 問）`);
 process.exit(bad ? 1 : 0);

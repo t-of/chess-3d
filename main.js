@@ -324,11 +324,12 @@ function show(name) {
 function renderTitle() {
   const done = loadDone();
   const next = LESSONS.find((L) => !done.includes(L.id));
-  $('titleDone').textContent = `レッスン ${done.length}/${LESSONS.length} クリア`;
+  const grad = !next;
+  $('titleDone').textContent = grad ? `卒業おめでとう！ 全 ${LESSONS.length} レッスンクリア` : `レッスン ${done.length}/${LESSONS.length} クリア`;
   $('goContinue').hidden = !next;
   if (next) $('goContinue').textContent = `つづきから ― ${LESSONS.indexOf(next) + 1}. ${next.title}`;
   $('goContinue').onclick = () => openLesson(next);
-  document.querySelector('[data-wak="share"]').dataset.wakText = `チェス入門 ${done.length}/${LESSONS.length} レッスンクリア #T_OF`;
+  document.querySelector('[data-wak="share"]').dataset.wakText = grad ? `チェス入門 卒業！ ${LESSONS.length}/${LESSONS.length} レッスンクリア #T_OF` : `チェス入門 ${done.length}/${LESSONS.length} レッスンクリア #T_OF`;
 }
 
 function renderList() {
@@ -478,7 +479,7 @@ function answer(i) {
 }
 
 function solved(word) {
-  const L = lesson, last = L.ti === L.L.tasks.length - 1;
+  const L = lesson, t = L.t, last = L.ti === L.L.tasks.length - 1;
   L.solved = true; L.live = false; busy = true;
   showHint([]);
   $('hintBtn').hidden = true;
@@ -486,7 +487,8 @@ function solved(word) {
   if (last) {
     markDone(L.L.id);
     sfx('clear');
-    say(`${word || 'できた！'} レッスンクリア！`, 'ok');
+    const grad = loadDone().length === LESSONS.length;
+    say(`${word || 'できた！'} ${grad ? '卒業おめでとう！ 全レッスンクリア！' : 'レッスンクリア！'}${t.clear ? ' ' + t.clear : ''}`, 'ok');
   } else {
     sfx('ok');
     say(word || 'できた！', 'ok');

@@ -177,6 +177,96 @@ export const LESSONS = [
         hint: '守られていない駒を取ろう', hintSq: ['a4'], sol: ['d1a4'] },
     ],
   },
+  {
+    id: 'mate-q', ch: 5, title: 'クイーンでメイト',
+    text: 'クイーンとキングがあれば、相手のキングを盤の端に追いつめてメイトできます。クイーンだけで近づくと取られるので、キングで守ります。',
+    tasks: [
+      { q: 'メイトしよう', fen: '4k3/8/4K3/8/7Q/8/8/8 w - - 0 1', goal: 'mate', sol: ['h4e7'],
+        hint: 'キングに守られた升へクイーンを置く', hintSq: ['e7'] },
+      { q: '2 手でメイト', fen: '6k1/4Q3/8/6K1/8/8/8/8 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['g5g6', 'g5h6'], reply: 'g8h8' }, { goal: 'mate' }],
+        hint: 'まずキングを近づける。クイーンはそのまま', hintSq: ['g6', 'h6'], sol: ['g5g6', 'e7g7'] },
+    ],
+  },
+  {
+    id: 'mate-r', ch: 5, title: 'ルークでメイト',
+    text: 'ルークでもメイトできます。相手のキングを端に置き、自分のキングを向かい合わせて、端の列をルークでふさぎます。',
+    tasks: [
+      { q: 'メイトしよう', fen: '4k3/8/4K3/8/8/8/8/R7 w - - 0 1', goal: 'mate', sol: ['a1a8'],
+        hint: 'いちばん上の段をふさごう', hintSq: ['a8'] },
+      { q: '2 手でメイト（引き分けに注意）', fen: '7k/R7/5K2/8/8/8/8/8 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['f6g6'], reply: 'h8g8' }, { goal: 'mate' }],
+        hint: 'キングを横に動かして、向かい合わせよう', hintSq: ['g6'], sol: ['f6g6', 'a7a8'] },
+    ],
+  },
+  {
+    id: 'ladder', ch: 5, title: '2 つのルーク（はしご）',
+    text: 'ルークが 2 つあれば、交互にチェックして、はしごをのぼるように相手のキングを端へ押していけます。',
+    tasks: [
+      { q: 'はしごでメイトしよう', fen: '8/4k3/R7/8/8/8/8/1R5K w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['b1b7'], reply: 'e7e8' }, { goal: 'mate' }],
+        hint: '1 つのルークがふさいだ段の、1 つ上をもう 1 つでチェック', hintSq: ['b7'], sol: ['b1b7', 'a6a8'] },
+      { q: 'はしごで 4 手メイト', fen: '8/8/8/4k3/R7/8/8/1R5K w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['b1b5'], reply: 'e5e6' }, { ok: ['a4a6'], reply: 'e6e7' }, { ok: ['b5b7'], reply: 'e7e8' }, { goal: 'mate' }],
+        hint: '1 つのルークがふさいでいる段の、1 つ上をもう 1 つのルークでチェック', hintSq: ['b5'], sol: ['b1b5', 'a4a6', 'b5b7', 'a6a8'] },
+    ],
+  },
+  {
+    id: 'opening', ch: 6, title: '序盤の考え方',
+    text: '最初は、①まん中にポーンを出す ②ナイトとビショップを外に出す ③早めにキャスリング。同じ駒を何度も動かしたり、クイーンを早く出しすぎたりしないこと。',
+    tasks: [
+      { q: 'まん中にポーンを出そう', fen: START, goal: 'steps', steps: [{ ok: ['e2e4', 'd2d4'] }],
+        hint: 'まん中のポーンを 2 升', hintSq: ['e4', 'd4'], sol: ['e2e4'] },
+      { q: 'ナイトを出そう', fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', goal: 'steps',
+        steps: [{ ok: ['g1f3', 'b1c3'] }], hint: 'ナイトはまん中に向けて出す', hintSq: ['f3', 'c3'], sol: ['g1f3'] },
+      { q: 'ビショップを出して、キャスリングしよう', fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3', goal: 'steps',
+        steps: [{ ok: ['f1c4', 'f1b5'], reply: 'g8f6', q: 'キャスリングしよう' }, { ok: ['e1g1'] }],
+        hint: 'ビショップを出すと、キングとルークの間があく', hintSq: ['c4', 'b5'], sol: ['f1c4', 'e1g1'] },
+    ],
+  },
+  {
+    id: 'fork', ch: 7, title: 'フォーク',
+    text: '1 つの駒で、相手の 2 つの駒を同時にねらうのが「フォーク」。相手は 1 つしか助けられません。',
+    tasks: [
+      { q: 'ナイトでキングとルークを同時にねらおう', fen: 'r3k3/5ppp/8/1N6/8/8/8/6K1 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['b5c7'], reply: 'e8e7', q: 'ルークを取ろう' }, { ok: ['c7a8'] }],
+        hint: 'キングとルークの両方に届く升は？', hintSq: ['c7'], sol: ['b5c7', 'c7a8'] },
+      { q: 'ポーンでフォーク', fen: '6k1/8/2n1r3/8/3P4/8/8/6K1 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['d4d5'], reply: 'e6e8', q: '逃げなかったナイトを取ろう' }, { ok: ['d5c6'] }],
+        hint: 'ポーンは前のななめをねらう。2 つの駒の間へ', hintSq: ['d5'], sol: ['d4d5', 'd5c6'] },
+    ],
+  },
+  {
+    id: 'pin', ch: 7, title: 'ピン',
+    text: '動くと後ろの大事な駒が取られてしまうので動けない状態が「ピン」。キングの前でピンされた駒は、まったく動けません。',
+    tasks: [
+      { q: 'ビショップでナイトを動けなくしよう', fen: '4k3/7p/2n5/8/3P4/8/8/5BK1 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['f1b5'], reply: 'h7h6' }, { ok: ['d4d5'], reply: 'h6h5', q: '動けないナイトをポーンでねらおう' }, { ok: ['d5c6'], q: 'ナイトを取ろう' }],
+        hint: 'ナイトとキングを、ななめの 1 本の線に並べる', hintSq: ['b5'], sol: ['f1b5', 'd4d5', 'd5c6'] },
+    ],
+  },
+  {
+    id: 'skewer', ch: 7, title: 'スキュワー',
+    text: '大事な駒をねらい、それが逃げたら後ろの駒を取るのが「スキュワー（串刺し）」。ピンの逆の形です。',
+    tasks: [
+      { q: 'チェックして、後ろのルークを取ろう', fen: '8/8/3k3r/8/8/8/8/R5K1 w - - 0 1', goal: 'steps',
+        steps: [{ ok: ['a1a6'], reply: 'd6d5', q: '後ろのルークを取ろう' }, { ok: ['a6h6'] }],
+        hint: 'キングと同じ段にルークでチェック', hintSq: ['a6'], sol: ['a1a6', 'a6h6'] },
+    ],
+  },
+  {
+    id: 'final', ch: 7, title: '卒業テスト',
+    text: 'ここまでのまとめ。どれも 1 手でメイトできます。',
+    tasks: [
+      { q: 'メイトしよう', fen: '6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1', goal: 'mate', sol: ['d1d8'],
+        hint: 'キングは自分のポーンで逃げ場がない', hintSq: ['d8'] },
+      { q: 'メイトしよう', fen: '6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1', goal: 'mate', sol: ['g5f7'],
+        hint: 'キングは自分の駒で逃げ場がない。ナイトで', hintSq: ['f7'] },
+      { q: 'メイトしよう', fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4', goal: 'mate', sol: ['h5f7'],
+        hint: 'ビショップに守られた f7 をねらう', hintSq: ['f7'],
+        clear: '黒の立場なら、3 手目にクイーンの Qh5 を防ぐ手を指しましょう。' },
+    ],
+  },
 ];
 
 // 段の並び（mate / check / stalemate は 1 段の短い書き方）
@@ -195,6 +285,7 @@ export function judgeStep(step, s, m) {
   if (good) return { ok: true };
   let msg = 'その手じゃないみたい。もう一度';
   if (step.bad && step.bad[u]) msg = step.bad[u];
+  else if (step.reply && st !== 'stalemate') msg = 'その手もありかもしれないけど、ここでは見本の手順で';
   else if (st === 'stalemate') msg = 'それだとステイルメイト（引き分け）になってしまう';
   else if (step.goal === 'mate' && st === 'check') msg = 'チェック！ でもキングが逃げられる';
   else if (step.goal === 'mate' || step.goal === 'check') msg = 'まだチェックになっていない';
