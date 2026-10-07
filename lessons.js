@@ -8,11 +8,12 @@
 //   quiz       choices のうち answer（0 始まり）を押す
 // task.side: 学ぶ側の色（'w' か 'b'。省略は 'w'）。'b' は盤を黒の側から見せ、reply は白の手になる。
 // step.why: 正解したあとに出すひとこと（なぜその手か）。
+// task.line: fen が実戦から取った局面のとき、初期配置からの手順（UCI。テストが fen と照らす。画面には出さない）。
 // task.sol は見本の正解（テスト用。画面には出さない）。pre は問題の最初に黒が指す手、only は動かせる駒の種類。
-import { apply, inCheck, status, toUci } from './chess.js';
+import { apply, inCheck, moves, status, toUci } from './chess.js';
 
 export const CHAPTERS = [
-  '駒と動き', '取る・チェック・メイト', '特別な手', '引き分けと駒の価値', '基本のメイト', '序盤', '戦術', '定跡',
+  '駒と動き', '取る・チェック・メイト', '特別な手', '引き分けと駒の価値', '基本のメイト', '序盤', '戦術', '定跡', '実戦の局面',
 ];
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -405,6 +406,115 @@ export const LESSONS = [
       ], 'b', 'e2e4'),
     ],
   },
+  {
+    id: 'g-mate', ch: 9, title: '1 手でメイト',
+    text: '実際の対局で、キングのまわりがすいた瞬間。1 手でしとめよう。',
+    tasks: [
+      { q: 'メイトしよう', fen: 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2', line: 'f2f3 e7e5 g2g4', side: 'b', goal: 'mate', sol: ['d8h4'],
+        hint: '白のキングの前のななめが空いている', hintSq: ['h4'], clear: 'フールズメイト。序盤に f と g のポーンを動かすと、キングのななめがあく' },
+      { q: 'メイトしよう', fen: '6k1/pbq2ppp/1p6/2n5/8/1P3Q2/PBr2PPP/R3R1K1 w - - 0 24', goal: 'mate', sol: ['e1e8'],
+        hint: '黒のキングは自分のポーンで前に出られない。いちばん奥の段は？', hintSq: ['e8'], clear: 'バックランクメイト。攻めこむ前に、自分の奥の段も見よう' },
+      { q: 'メイトしよう', fen: 'r1bq1rk1/ppp1bppp/2n1p3/3p3Q/3P4/2NBB3/PPP2PPP/R4RK1 w - - 0 10', goal: 'mate', sol: ['h5h7'],
+        hint: 'd3 のビショップが、ななめにどこを見ている？', hintSq: ['h7'], clear: 'キャスリングしたキングの前の h7 は、よくねらわれる升' },
+    ],
+  },
+  {
+    id: 'g-smother', ch: 9, title: 'ふさがれたキング',
+    text: 'キングのまわりを自分の駒がふさいでいると、ナイト 1 つでメイトされることがある（スマザードメイト）。',
+    tasks: [
+      { q: 'メイトしよう', fen: 'r1bqkb1r/pp1npppp/2p2n2/8/3PN3/8/PPP1QPPP/R1B1KBNR w KQkq - 2 6',
+        line: 'e2e4 c7c6 d2d4 d7d5 b1c3 d5e4 c3e4 b8d7 d1e2 g8f6', goal: 'mate', sol: ['e4d6'],
+        hint: '黒の e のポーンは動けない。動くとキングがクイーンに当たる', hintSq: ['d6'], clear: '黒の 5 手目がまちがい。e のポーンがピンされていて、d6 のナイトを取れない' },
+      { q: 'メイトしよう', fen: 'r1b1k2r/ppppqppp/2n5/4n3/1PP2B2/5N2/1P1NPPPP/R2QKB1R b KQkq - 0 8',
+        line: 'd2d4 g8f6 c2c4 e7e5 d4e5 f6g4 c1f4 f8b4 b1d2 b8c6 g1f3 d8e7 a2a3 g4e5 a3b4', side: 'b', goal: 'mate', sol: ['e5d3'],
+        hint: '白の e のポーンは、黒のクイーンにピンされている', hintSq: ['d3'], clear: '白がビショップを取ったすきに、ナイトでメイト' },
+    ],
+  },
+  {
+    id: 'g-defend', ch: 9, title: '守る',
+    text: '相手のねらいに気づいて、先に守る。取られる前に、メイトされる前に。',
+    tasks: [
+      { q: 'このままだと f7 を取られてメイト。守ろう', fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3',
+        line: 'e2e4 e7e5 f1c4 b8c6 d1h5', side: 'b', goal: 'steps', sol: ['g7g6'],
+        steps: [{ ok: ['g7g6', 'd8e7', 'd8f6'], why: 'クイーンを追い払いながら、f7 への道をふさいだ', hint: 'f7 を守るか、クイーンの道をふさぐ', hintSq: ['f7'],
+          bad: { g8f6: 'f7 が守れていない。Qxf7 でメイトされてしまう', g8h6: '守れているけど、端のナイトは働きにくい。ほかの手で' } }] },
+      { q: 'ナイトとビショップが f7 をねらっている。守ろう', fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq - 5 4',
+        line: 'e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 f3g5', side: 'b', goal: 'steps', sol: ['d7d5'],
+        steps: [{ ok: ['d7d5'], why: 'ビショップの道をふさいだ。f7 をねらう駒が 1 つ減った', hintSq: ['d5'], hint: 'ポーンでビショップの道をふさごう',
+          bad: { d8e7: 'f7 は守れる。でもクイーンがビショップの道をふさいでしまう。ポーンでビショップの道をふさごう',
+            h7h6: 'ナイトを追う前に、Nxf7 でクイーンとルークを両取りされる',
+            f8c5: '強い手だけど、とてもむずかしい。ここではポーンで守ろう' } }] },
+      { q: '白のクイーンがただで取れる…？ ほんとうに取っていいか考えよう', fen: 'rn1qkbnr/ppp2p1p/3p2p1/4N3/2B1P1b1/2N5/PPPP1PPP/R1BQK2R b KQkq - 0 5',
+        line: 'e2e4 e7e5 g1f3 d7d6 f1c4 c8g4 b1c3 g7g6 f3e5', side: 'b', goal: 'steps', sol: ['d6e5'],
+        steps: [{ ok: ['d6e5', 'g4e6'], why: 'クイーンを取らずにナイトを取った。わなにかからなければ、ポーン 1 つの損ですむ', hint: 'クイーンより、目の前のナイトを', hintSq: ['e5'],
+          bad: { g4d1: 'わな！ Bxf7+ Ke7 Nd5# でメイトされる' } }] },
+    ],
+  },
+  {
+    id: 'g-win', ch: 9, title: '駒を得する',
+    text: '相手の駒の並びのすきを突いて、駒を得する。チェックしながらねらうと、相手は守る手が足りない。',
+    tasks: [
+      { q: '2 手でクイーンを取ろう', fen: 'rnbqkb1r/pppp1ppp/5n2/4N3/8/8/PPPPQPPP/RNB1KB1R w KQkq - 2 5',
+        line: 'e2e4 e7e5 g1f3 g8f6 f3e5 f6e4 d1e2 e4f6', goal: 'steps', sol: ['e5c6', 'c6d8'],
+        steps: [
+          { ok: ['e5c6'], reply: 'f8e7', why: 'ナイトがどいて、e の列のクイーンでチェック（開き王手）。同時にナイトが d8 のクイーンをねらう', hintSq: ['c6'], hint: 'ナイトを動かして、e の列を開けよう' },
+          { q: 'クイーンを取ろう', ok: ['c6d8'], hintSq: ['d8'], bad: { c6e7: 'ビショップより、クイーンを' } },
+        ] },
+      { q: 'ナイトをさし出して、フォークで取り返そう（2 手）', fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R b KQkq - 5 4',
+        line: 'e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 b1c3', side: 'b', goal: 'steps', sol: ['f6e4', 'd7d5'], clear: 'どちらが逃げても、もう一方を取り返せる。フォークのトリック',
+        steps: [
+          { ok: ['f6e4'], reply: 'c3e4', why: 'ポーンを取った。取り返されても…', hintSq: ['e4'], hint: 'e4 のポーンをナイトで取ろう' },
+          { q: 'ポーン 1 つで 2 つの駒をねらおう', ok: ['d7d5'], hintSq: ['d5'], hint: 'ポーンを進めて、ナイトとビショップに当てる' },
+        ] },
+      { q: 'クイーンを取られた！ でも 3 手で取り返して、駒得できる', fen: 'r1bBkb1r/pppn1ppp/8/3n4/3P4/8/PP2PPPP/R2QKBNR b KQkq - 0 7',
+        line: 'd2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 b8d7 c4d5 e6d5 c3d5 f6d5 g5d8', side: 'b', goal: 'steps', sol: ['f8b4', 'b4d2', 'e8d8'],
+        steps: [
+          { ok: ['f8b4'], reply: 'd1d2', why: 'チェック。白はクイーンでふさぐしかない', hintSq: ['b4'], hint: 'ビショップでチェックしよう' },
+          { q: 'クイーンを取り返そう', ok: ['b4d2'], reply: 'e1d2', why: 'クイーンを取り返した', hintSq: ['d2'] },
+          { q: 'ビショップも取り返そう', ok: ['e8d8'], why: 'ビショップも取り返して、ナイト 1 つ得', hintSq: ['d8'] },
+        ] },
+    ],
+  },
+  {
+    id: 'g-combo', ch: 9, title: '3 手の組み立て',
+    text: '駒を捨ててでも、チェックを続けてメイトまで運ぶ。相手の手は 1 つに決まっていることが多い。',
+    tasks: [
+      { q: 'クイーンをあげて、3 手でメイト', fen: 'rn1qkbnr/ppp2p1p/3p2p1/4p3/2B1P1b1/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 0 5',
+        line: 'e2e4 e7e5 g1f3 d7d6 f1c4 c8g4 b1c3 g7g6', goal: 'steps', sol: ['f3e5', 'c4f7', 'c3d5'], clear: 'レガールのメイト。18 世紀から知られる形',
+        steps: [
+          { q: '動けないように見えるナイトで、ポーンを取ろう', ok: ['f3e5'], reply: 'g4d1', why: 'クイーンを取らせる。そのかわり…', hintSq: ['e5'], hint: 'ナイトで e5 のポーンを取る' },
+          { q: 'チェックしよう', ok: ['c4f7'], reply: 'e8e7', hintSq: ['f7'], hint: 'ビショップで f7 のポーンを取る' },
+          { q: 'メイトしよう', goal: 'mate', hintSq: ['d5'], hint: 'もう 1 つのナイトで' },
+        ] },
+      { q: 'ルークを取られそう。でも白のキングをねらって 3 手でメイト', fen: 'r1b1kbnr/pppp1Npp/8/6q1/2BnP3/8/PPPP1PPP/RNBQK2R b KQkq - 0 5',
+        line: 'e2e4 e7e5 g1f3 b8c6 f1c4 c6d4 f3e5 d8g5 e5f7', side: 'b', goal: 'steps', sol: ['g5g2', 'g2e4', 'd4f3'], clear: '白が e5 のポーンを取りにきたすきを突いた',
+        steps: [
+          { q: 'クイーンでポーンを取り、ルークに当てよう', ok: ['g5g2'], reply: 'h1f1', hintSq: ['g2'], hint: 'クイーンを g2 へ' },
+          { q: 'チェックしよう', ok: ['g2e4'], reply: 'c4e2', hintSq: ['e4'], hint: 'クイーンで e4 のポーンを取る' },
+          { q: 'メイトしよう', goal: 'mate', hintSq: ['f3'], hint: 'ナイトで' },
+        ] },
+    ],
+  },
+  {
+    id: 'g-famous', ch: 9, title: '名局の決め手',
+    text: '昔の名局の終わり方。どちらも、早く駒を出した側がクイーンを捨てて勝った。',
+    tasks: [
+      { q: 'クイーンを捨てて、2 手でメイト', fen: '4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16',
+        line: 'e2e4 e7e5 g1f3 d7d6 d2d4 c8g4 d4e5 g4f3 d1f3 d6e5 f1c4 g8f6 f3b3 d8e7 b1c3 c7c6 c1g5 b7b5 c3b5 c6b5 c4b5 b8d7 e1c1 a8d8 d1d7 d8d7 h1d1 e7e6 b5d7 f6d7',
+        goal: 'steps', sol: ['b3b8', 'd1d8'], clear: '黒は駒を出すのが遅れ、キングがまん中に残っていた',
+        steps: [
+          { ok: ['b3b8'], reply: 'd7b8', why: 'チェック。黒はナイトで取るしかない', hintSq: ['b8'], hint: 'クイーンをいちばん奥の段へ' },
+          { q: 'メイトしよう', goal: 'mate', hintSq: ['d8'], hint: 'ルークで' },
+        ] },
+      { q: 'クイーンを捨てて、3 手でメイト', fen: 'rnb1kb1r/pp3ppp/2p5/4q3/4n3/3Q4/PPPB1PPP/2KR1BNR w kq - 0 9',
+        line: 'e2e4 c7c6 d2d4 d7d5 b1c3 d5e4 c3e4 g8f6 d1d3 e7e5 d4e5 d8a5 c1d2 a5e5 e1c1 f6e4', goal: 'steps', sol: ['d3d8', 'd2g5', 'g5d8'], clear: 'Ke8 と逃げても Rd8 でメイトだった',
+        steps: [
+          { ok: ['d3d8'], reply: 'e8d8', why: 'キングで取るしかない', hintSq: ['d8'], hint: 'クイーンを d8 へ' },
+          { q: '2 つの駒で同時にチェックしよう', ok: ['d2g5'], reply: 'd8c7', why: 'ビショップがどいて、ルークとビショップの両方からチェック（両王手）', hintSq: ['g5'], hint: 'ビショップをどかして、ルークの線をあける' },
+          { q: 'メイトしよう', goal: 'mate', hintSq: ['d8'], hint: 'ビショップで' },
+        ] },
+    ],
+  },
 ];
 
 // 段の並び（mate / check / stalemate は 1 段の短い書き方）
@@ -423,6 +533,7 @@ export function judgeStep(step, s, m) {
   if (good) return { ok: true };
   let msg = 'その手じゃないみたい。もう一度';
   if (step.bad && step.bad[u]) msg = step.bad[u];
+  else if (st === 'play' && moves(next).some((r) => status(apply(next, r)) === 'checkmate')) msg = 'それだと、次にメイトされてしまう';
   else if (step.reply && st !== 'stalemate') msg = 'その手もありかもしれないけど、ここでは見本の手順で';
   else if (st === 'stalemate') msg = 'それだとステイルメイト（引き分け）になってしまう';
   else if (step.goal === 'mate' && st === 'check') msg = 'チェック！ でもキングが逃げられる';

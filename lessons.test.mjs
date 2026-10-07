@@ -15,6 +15,15 @@ for (const L of LESSONS) {
     n++;
     const side = t.side || 'w';
     let s = fromFEN(t.fen);
+    if (t.line) { // 実戦の局面: 初期配置から line を流した盤と手番が fen と同じか
+      let g = fromFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+      for (const u of t.line.split(' ')) {
+        const m = moves(g).find((x) => toUci(x) === u);
+        if (!m) { fail(where, `line の ${u} が合法でない`); break; }
+        g = apply(g, m);
+      }
+      if (JSON.stringify(g.board) !== JSON.stringify(s.board) || g.turn !== s.turn) fail(where, 'line を流した盤が fen と合わない');
+    }
     const play = (u, label) => {
       const m = moves(s).find((x) => toUci(x) === u);
       if (!m) { fail(where, `${label} ${u} が合法でない`); return null; }

@@ -495,7 +495,7 @@ function solved(word, why) {
     markDone(L.L.id);
     sfx('clear');
     const end = loadDone().length === LESSONS.length ? `全 ${LESSONS.length} レッスンクリア！`
-      : graduated() && !was ? '卒業おめでとう！ 次は定跡へ' : 'レッスンクリア！';
+      : graduated() && !was ? '卒業おめでとう！ 次は定跡と実戦へ' : 'レッスンクリア！';
     say(`${word || 'できた！'}${why ? ' ' + why : ''} ${end}${t.clear ? ' ' + t.clear : ''}`, 'ok');
   } else {
     sfx('ok');
