@@ -5,7 +5,7 @@ import { LESSONS, stepsOf, eaten, judgeStep } from './lessons.js';
 let bad = 0, n = 0;
 const fail = (where, msg) => { bad++; console.log('NG', where, msg); };
 const ids = new Set();
-const back = (s) => ({ ...s, turn: 'w', ep: -1 }); // 黒は動かない（eat）
+const back = (s, side = 'w') => ({ ...s, turn: side, ep: -1 }); // 相手は動かない
 
 for (const L of LESSONS) {
   if (ids.has(L.id)) fail(L.id, 'id が重複');
@@ -13,14 +13,16 @@ for (const L of LESSONS) {
   L.tasks.forEach((t, i) => {
     const where = `${L.id}#${i + 1}`;
     n++;
+    const side = t.side || 'w';
     let s = fromFEN(t.fen);
     const play = (u, label) => {
       const m = moves(s).find((x) => toUci(x) === u);
       if (!m) { fail(where, `${label} ${u} が合法でない`); return null; }
-      if (t.only && s.turn === 'w' && !t.only.includes(s.board[m.from].t)) fail(where, `${u} は only の外`);
+      if (t.only && s.turn === side && !t.only.includes(s.board[m.from].t)) fail(where, `${u} は only の外`);
       return m;
     };
     if (t.pre) { for (const u of [].concat(t.pre)) { const m = play(u, 'pre'); if (m) s = apply(s, m); } }
+    if (t.pre && s.turn !== side) fail(where, 'pre のあと学ぶ側の番になっていない');
     if (t.goal === 'quiz') {
       if (!(t.answer >= 0 && t.answer < t.choices.length)) fail(where, 'answer が範囲外');
       return;
@@ -30,7 +32,7 @@ for (const L of LESSONS) {
       t.sol.forEach((u, k) => {
         const m = play(u, `${k + 1} 手目`);
         if (!m) return;
-        s = back(apply(s, m));
+        s = back(apply(s, m), side);
         if (k < t.sol.length - 1 && eaten(s)) fail(where, 'sol の途中で全部なくなった');
       });
       if (!eaten(s)) fail(where, 'sol のあとも黒が残っている');
@@ -42,12 +44,13 @@ for (const L of LESSONS) {
     steps.forEach((st, k) => {
       const m = play(t.sol[k], `${k + 1} 段`);
       if (!m) return;
+      for (const u of [...(st.ok || []), ...Object.keys(st.bad || {})]) if (!moves(s).some((x) => toUci(x) === u)) fail(where, `${k + 1} 段: ${u} が合法でない`);
       if (!judgeStep(st, s, m).ok) return fail(where, `${k + 1} 段: ${t.sol[k]} が正解にならない`);
       s = apply(s, m);
       if (st.reply) {
         const r = play(st.reply, `${k + 1} 段の reply`);
         if (r) s = apply(s, r); else return;
-      } else s = back(s);
+      } else s = back(s, side);
     });
   });
 }
@@ -66,14 +69,16 @@ for (const L of LESSONS) L.tasks.forEach((t, i) => {
       const m = moves(s).find((x) => toUci(x) === u);
       if (!m) { fail(where, `${u} が合法でない`); continue; }
       const n = apply(s, m);
-      if (!st.reply) { go({ ...n, turn: 'w', ep: -1 }, k + 1); continue; }
+      if (!st.reply) { go({ ...n, turn: t.side || 'w', ep: -1 }, k + 1); continue; }
       const legal = moves(n).map(toUci);
       if (!legal.includes(st.reply)) { fail(where, `${u} のあと reply ${st.reply} が合法でない`); continue; }
       if ((L.id === 'mate-q' || L.id === 'mate-r') && legal.length !== 1) fail(where, `${u} のあと黒の手が 1 つではない`);
       go(apply(n, moves(n).find((x) => toUci(x) === st.reply)), k + 1);
     }
   };
-  go(fromFEN(t.fen), 0);
+  let s0 = fromFEN(t.fen);
+  for (const u of [].concat(t.pre || [])) s0 = apply(s0, moves(s0).find((x) => toUci(x) === u));
+  go(s0, 0);
 });
 console.log(bad ? `${bad} 件 NG` : `OK（${LESSONS.length} レッスン、${n} 問）`);
 process.exit(bad ? 1 : 0);

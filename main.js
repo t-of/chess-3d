@@ -161,7 +161,7 @@ let mode = 'free';  // 'free'（2 人で自由に指す）か 'lesson'
 let lesson = null;  // レッスン中: { L, t, ti, si, mist, moves, live, solved }
 
 // 局面を並べ直す。fen がなければ初期配置
-function reset(fen) {
+function reset(fen, side = 'w') {
   gen++;
   anims = [];
   if (groups) for (const g of [...groups.values(), ...graveyard]) scene.remove(g);
@@ -175,7 +175,7 @@ function reset(fen) {
   hudText.textContent = '白の番';
   camTween = null;
   const d = camera.position.length();
-  camera.position.set(0, d * 0.75, d * 0.66);
+  camera.position.set(0, d * 0.75, d * 0.66 * (side === 'b' ? -1 : 1)); // 黒番の問題は黒の側から見る
   controls.update();
   fitCamera(true);
 }
@@ -314,6 +314,9 @@ function markDone(id) {
   try { localStorage.setItem('chess-3d.done', JSON.stringify({ v: 1, ids })); } catch { /* 保存できない環境 */ }
 }
 
+// 卒業 = 第 1〜7 章が全部済んだ（第 8 章からは卒業のあとのつづき）
+const graduated = () => { const d = loadDone(); return LESSONS.every((L) => L.ch > 7 || d.includes(L.id)); };
+
 function show(name) {
   for (const id of ['title', 'list', 'play']) $(id).hidden = id !== name;
   if (name !== 'play') { gen++; anims = []; busy = true; }
@@ -324,12 +327,12 @@ function show(name) {
 function renderTitle() {
   const done = loadDone();
   const next = LESSONS.find((L) => !done.includes(L.id));
-  const grad = !next;
-  $('titleDone').textContent = grad ? `卒業おめでとう！ 全 ${LESSONS.length} レッスンクリア` : `レッスン ${done.length}/${LESSONS.length} クリア`;
+  const all = !next, grad = graduated(), N = LESSONS.length;
+  $('titleDone').textContent = all ? `卒業おめでとう！ 全 ${N} レッスンクリア` : grad ? `卒業！ レッスン ${done.length}/${N} クリア` : `レッスン ${done.length}/${N} クリア`;
   $('goContinue').hidden = !next;
   if (next) $('goContinue').textContent = `つづきから ― ${LESSONS.indexOf(next) + 1}. ${next.title}`;
   $('goContinue').onclick = () => openLesson(next);
-  document.querySelector('[data-wak="share"]').dataset.wakText = grad ? `チェス入門 卒業！ ${LESSONS.length}/${LESSONS.length} レッスンクリア #T_OF` : `チェス入門 ${done.length}/${LESSONS.length} レッスンクリア #T_OF`;
+  document.querySelector('[data-wak="share"]').dataset.wakText = all ? `チェス入門 全 ${N} レッスンクリア！ #T_OF` : `チェス入門 ${grad ? '卒業！ ' : ''}${done.length}/${N} レッスンクリア #T_OF`;
 }
 
 function renderList() {
@@ -340,7 +343,8 @@ function renderList() {
     if (L.ch !== ch) {
       ch = L.ch;
       const h = document.createElement('h3');
-      h.textContent = `第 ${ch} 章 ${CHAPTERS[ch - 1]}`;
+      const inCh = LESSONS.filter((x) => x.ch === ch);
+      h.textContent = `第 ${ch} 章 ${CHAPTERS[ch - 1]} ${inCh.filter((x) => done.includes(x.id)).length}/${inCh.length}`;
       box.appendChild(h);
     }
     const b = document.createElement('button');
@@ -353,6 +357,8 @@ function renderList() {
     b.onclick = () => openLesson(L);
     box.appendChild(b);
   });
+  const first = LESSONS.findIndex((L) => !done.includes(L.id));
+  if (first > 0) box.querySelectorAll('.lrow')[first].scrollIntoView({ block: 'center' }); // まだ済んでいない一番若い行へ
 }
 
 function openFree() {
@@ -380,13 +386,13 @@ const curStep = () => stepsOf(lesson.t)[lesson.si];
 function renderPanel() {
   const { L, t, ti } = lesson;
   $('taskProg').textContent = `${ti + 1}/${L.tasks.length}`;
-  $('taskQ').textContent = curStep().q || t.q;
+  $('taskQ').textContent = (t.side === 'b' ? 'あなたは黒。' : '') + (curStep().q || t.q);
 }
 
 async function startTask() {
   const L = lesson, t = L.L.tasks[L.ti];
   Object.assign(L, { t, si: 0, mist: 0, moves: 0, live: false, solved: false });
-  reset(t.fen);
+  reset(t.fen, t.side);
   const g0 = gen;
   say('');
   renderPanel();
@@ -422,7 +428,7 @@ function showLessonHint() {
 
 // 白の手 m を判定する。ちがう手は動かさず、ひとこと出す
 async function tryLesson(m) {
-  const L = lesson, t = L.t, g0 = gen, steps = stepsOf(t);
+  const L = lesson, t = L.t, g0 = gen, steps = stepsOf(t), side = t.side || 'w', foe = side === 'w' ? 'b' : 'w';
   if (t.goal !== 'eat') {
     const r = judgeStep(steps[L.si], state, m);
     if (!r.ok) {
@@ -435,7 +441,7 @@ async function tryLesson(m) {
   showHint([]); say('');
   if (!(await move(m))) return;
   if (t.goal === 'eat') {
-    state = { ...state, turn: 'w', ep: -1 }; // 黒は動かない
+    state = { ...state, turn: side, ep: -1 }; // 相手は動かない
     L.moves++;
     if (eaten(state)) return solved('できた！');
     if (L.moves >= t.limit) {
@@ -448,18 +454,18 @@ async function tryLesson(m) {
     busy = false; L.live = true;
     return;
   }
-  checkSide = inCheck(state, 'b') ? 'b' : null;
+  checkSide = inCheck(state, foe) ? foe : null;
   if (checkSide) sfx('check');
   const step = steps[L.si];
-  if (L.si === steps.length - 1) return solved(GOAL_WORD[step.goal]);
-  sfx('ok'); say('いいね！ つぎは？', 'ok');
+  if (L.si === steps.length - 1) return solved(GOAL_WORD[step.goal] || 'できた！', step.why);
+  sfx('ok'); say(step.why || 'いいね！ つぎは？', 'ok');
   if (step.reply) {
     await sleep(400);
     if (g0 !== gen) return;
     if (!(await move(moves(state).find((x) => toUci(x) === step.reply)))) return;
-    checkSide = inCheck(state, 'w') ? 'w' : null;
+    checkSide = inCheck(state, side) ? side : null;
   } else {
-    state = { ...state, turn: 'w', ep: -1 };
+    state = { ...state, turn: side, ep: -1 };
   }
   L.si++;
   renderPanel();
@@ -478,20 +484,22 @@ function answer(i) {
   solved('できた！');
 }
 
-function solved(word) {
+function solved(word, why) {
   const L = lesson, t = L.t, last = L.ti === L.L.tasks.length - 1;
   L.solved = true; L.live = false; busy = true;
   showHint([]);
   $('hintBtn').hidden = true;
   const next = LESSONS[LESSONS.indexOf(L.L) + 1];
   if (last) {
+    const was = graduated();
     markDone(L.L.id);
     sfx('clear');
-    const grad = loadDone().length === LESSONS.length;
-    say(`${word || 'できた！'} ${grad ? '卒業おめでとう！ 全レッスンクリア！' : 'レッスンクリア！'}${t.clear ? ' ' + t.clear : ''}`, 'ok');
+    const end = loadDone().length === LESSONS.length ? `全 ${LESSONS.length} レッスンクリア！`
+      : graduated() && !was ? '卒業おめでとう！ 次は定跡へ' : 'レッスンクリア！';
+    say(`${word || 'できた！'}${why ? ' ' + why : ''} ${end}${t.clear ? ' ' + t.clear : ''}`, 'ok');
   } else {
     sfx('ok');
-    say(word || 'できた！', 'ok');
+    say(`${word || 'できた！'}${why ? ' ' + why : ''}`, 'ok');
   }
   $('nextBtn').textContent = !last ? '次へ' : next ? '次のレッスンへ' : '一覧へ';
   $('nextBtn').hidden = false;
