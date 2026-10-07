@@ -62,3 +62,45 @@ button { font: inherit; color: inherit; }
 }
 .hud span { background: rgba(0, 0, 0, 0.45); border-radius: 999px; padding: 6px 14px; font-size: 15px; font-weight: 600; }
 .hud .pill { pointer-events: auto; min-height: 36px; }
+
+/* ---- 教材の画面 ---- */
+.muted { color: var(--muted); font-size: 13px; margin: 0; }
+.screen { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.screen.top { justify-content: flex-start; align-items: stretch; padding-top: 8px; }
+.lead { text-align: center; font-size: 17px; line-height: 1.7; margin: 0; }
+.big {
+  width: min(320px, 100%); min-height: 50px; border-radius: 14px; font-size: 16px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.07);
+}
+.primary { background: var(--accent); color: #2b2118; border-color: var(--accent); font-weight: 700; }
+.screen.top .pill { align-self: flex-start; min-height: 36px; }
+.lessons { display: flex; flex-direction: column; gap: 6px; max-width: 520px; width: 100%; margin: 0 auto; }
+.lessons h3 { margin: 12px 0 2px; font-size: 14px; color: var(--muted); }
+.lrow {
+  display: flex; gap: 10px; align-items: center; min-height: 46px; padding: 6px 14px; text-align: left; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); border-radius: 12px; font-size: 15px;
+}
+.lrow b { width: 1.6em; color: var(--muted); font-weight: 600; }
+.lrow span { flex: 1; }
+.lrow i { color: #6bff9a; font-style: normal; }
+
+#play { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.intro { font-size: 13px; line-height: 1.5; color: var(--muted); }
+.intro summary { color: var(--fg); font-weight: 700; font-size: 15px; cursor: pointer; min-height: 28px; }
+.intro p { margin: 2px 0 4px; }
+.panel { display: flex; flex-direction: column; gap: 4px; }
+.panel p { margin: 0; }
+.q { font-size: 15px; font-weight: 600; }
+.q #taskProg { color: var(--muted); font-weight: 400; margin-right: 8px; }
+.msg { min-height: 1.4em; font-size: 14px; color: var(--accent); }
+.msg.ok { color: #6bff9a; font-weight: 700; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.row .pill { min-height: 40px; }
+.pill.primary { background: var(--accent); color: #2b2118; border-color: var(--accent); font-weight: 700; }
+.choices { position: absolute; left: 0; right: 0; bottom: 8px; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.choices button {
+  min-height: 46px; width: min(340px, 94%); border-radius: 12px; font-size: 15px; cursor: pointer; padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(20, 14, 9, 0.85);
+}
+.choices button.right { background: #2e6b45; }
+.choices button:disabled:not(.right) { opacity: 0.5; }

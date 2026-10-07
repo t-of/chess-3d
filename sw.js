@@ -9,7 +9,7 @@
 // ブラウザの HTTP キャッシュを通さない（install は reload、fetch は no-cache）。古い main.js と新しい index.html が混ざって動かなくなるのを防ぐ。
 
 const PREFIX = 'chess-3d-';
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `${PREFIX}${VERSION}`;
 const FONT_CACHE = `${PREFIX}fonts`;
 
@@ -19,6 +19,8 @@ const SHELL = [
   './style.css',
   './main.js',
   './chess.js',
+  './lessons.js',
+  './sound.js',
   './vendor/three.module.min.js',
   './vendor/OrbitControls.js',
   './manifest.webmanifest',

@@ -1,8 +1,10 @@
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { initial, legalMoves, apply, status, inCheck } from './chess.js';
+import { initial, fromFEN, moves, apply, status, inCheck, toUci } from './chess.js';
+import { LESSONS, CHAPTERS, stepsOf, eaten, judgeStep } from './lessons.js';
+import { sfx, isOn, setOn } from './sound.js';
 
-WebAppKit.init({ title: 'chess-3d', text: '3D の盤で 2 人で指すチェス' });
+WebAppKit.init({ title: 'chess-3d', text: 'チェス入門 #T_OF' });
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
@@ -73,6 +75,15 @@ const selRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xf
 selRing.rotation.x = -Math.PI / 2;
 selRing.visible = false;
 scene.add(selRing);
+// ヒントで光らせる升（行き先の丸とは別の黄色）
+const hintMarks = Array.from({ length: 64 }, (_, sq) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ color: 0xffd35c, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.copy(posOf(sq)).setY(0.03);
+  m.visible = false;
+  scene.add(m);
+  return m;
+});
 
 // ---- 駒の形（プリミティブの組み合わせ）----
 const lathe = (pts) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 24);
@@ -146,17 +157,21 @@ function arc(g, to, h, dur, delay = 0, extra) {
 
 // ---- ゲーム ----
 let state, groups, graveyard, selected, targets, busy, gen = 0, checkSide = null;
+let mode = 'free';  // 'free'（2 人で自由に指す）か 'lesson'
+let lesson = null;  // レッスン中: { L, t, ti, si, mist, moves, live, solved }
 
-function reset() {
+// 局面を並べ直す。fen がなければ初期配置
+function reset(fen) {
   gen++;
   anims = [];
   if (groups) for (const g of [...groups.values(), ...graveyard]) scene.remove(g);
-  state = initial();
+  state = fen ? fromFEN(fen) : initial();
   groups = new Map();
   graveyard = [];
   state.board.forEach((p, sq) => { if (p) groups.set(sq, makePiece(p, sq)); });
   selected = -1; targets = []; busy = false; checkSide = null;
   showSelection();
+  showHint([]);
   hudText.textContent = '白の番';
   camTween = null;
   const d = camera.position.length();
@@ -179,29 +194,36 @@ function showSelection() {
   });
 }
 
+const sqIdx = (n) => 'abcdefgh'.indexOf(n[0]) + (n[1] - 1) * 8;
+function showHint(names) {
+  const set = new Set(names.map(sqIdx));
+  hintMarks.forEach((m, sq) => { m.visible = set.has(sq); });
+}
+
 function select(sq) {
   // 前に選んでいた駒は元の姿勢に戻す
   const prev = groups.get(selected);
   if (prev) { prev.position.y = 0; prev.rotation.set(0, prev.userData.yaw, 0); }
   selected = sq;
-  targets = sq >= 0 ? legalMoves(state).filter((m) => m.from === sq) : [];
+  targets = sq >= 0 ? moves(state).filter((m) => m.from === sq) : [];
   showSelection();
 }
 
 function onTap(sq) {
-  if (busy) return;
+  if (busy || (mode === 'lesson' && !lesson.live)) return;
   const p = state.board[sq];
   const m = targets.find((x) => x.to === sq);
-  if (m) return play(m);
-  if (p && p.c === state.turn && sq !== selected) select(sq);
+  if (m) return mode === 'lesson' ? tryLesson(m) : play(m);
+  const only = mode === 'lesson' && lesson.t.only;
+  if (p && p.c === state.turn && sq !== selected && (!only || only.includes(p.t))) { select(sq); sfx('select'); }
   else select(-1);
 }
 
-async function play(m) {
+// 駒を動かして state を進める。途中で盤が並べ直されたら false
+async function move(m) {
   const g0 = gen;
   busy = true;
   const mover = groups.get(m.from);
-  const wasSel = selected;
   select(-1);
   mover.userData.sq = m.to;
   const knight = mover.userData.piece.t === 'n';
@@ -234,8 +256,9 @@ async function play(m) {
     groups.delete(rf); groups.set(rt, rook); rook.userData.sq = rt;
     jobs.push(arc(rook, posOf(rt), 0.7, dur, 0.1));
   }
+  setTimeout(() => { if (g0 === gen) sfx(victim ? 'capture' : 'place'); }, dur * 800);
   await Promise.all(jobs);
-  if (g0 !== gen) return;
+  if (g0 !== gen) return false;
 
   if (m.promo) {
     // ポーンをクイーンに取り替え、ぽんと膨らませる
@@ -243,13 +266,20 @@ async function play(m) {
     const q = makePiece({ t: 'q', c: mover.userData.piece.c }, m.to);
     groups.set(m.to, q);
     await tween(0.35, (u) => q.scale.setScalar(u < 0.6 ? 0.6 + u * 1.0 : 1.2 - (u - 0.6) * 0.5));
-    if (g0 !== gen) return;
+    if (g0 !== gen) return false;
     q.scale.setScalar(1);
   }
   state = apply(state, m);
+  return true;
+}
+
+// 自由に指す: 指したあとの表示と、手番の側へカメラを回す
+async function play(m) {
+  if (!(await move(m))) return;
   const st = status(state);
   const who = state.turn === 'w' ? '白' : '黒';
   checkSide = st === 'check' || st === 'checkmate' ? state.turn : null;
+  if (checkSide) sfx('check');
   hudText.textContent = st === 'checkmate' ? `チェックメイト！ ${state.turn === 'w' ? '黒' : '白'}の勝ち`
     : st === 'stalemate' ? 'ステイルメイト ― 引き分け'
     : st === 'check' ? `${who}の番 ― チェック！` : `${who}の番`;
@@ -267,9 +297,223 @@ function turnCamera() {
   camTween = { start: camera.position.clone(), d, t0: performance.now() + 250, dur: 1800 };
 }
 
+// ---- レッスン ----
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const GOAL_WORD = { mate: 'メイト！', check: 'チェック！', stalemate: 'ステイルメイト！（引き分け）' };
+
+function loadDone() {
+  try {
+    const d = JSON.parse(localStorage.getItem('chess-3d.done'));
+    return d && d.v === 1 && Array.isArray(d.ids) ? d.ids.filter((id) => LESSONS.some((L) => L.id === id)) : [];
+  } catch { return []; }
+}
+function markDone(id) {
+  const ids = loadDone();
+  if (!ids.includes(id)) ids.push(id);
+  try { localStorage.setItem('chess-3d.done', JSON.stringify({ v: 1, ids })); } catch { /* 保存できない環境 */ }
+}
+
+function show(name) {
+  for (const id of ['title', 'list', 'play']) $(id).hidden = id !== name;
+  if (name !== 'play') { gen++; anims = []; busy = true; }
+  if (name === 'title') renderTitle();
+  if (name === 'list') renderList();
+}
+
+function renderTitle() {
+  const done = loadDone();
+  const next = LESSONS.find((L) => !done.includes(L.id));
+  $('titleDone').textContent = `レッスン ${done.length}/${LESSONS.length} クリア`;
+  $('goContinue').hidden = !next;
+  if (next) $('goContinue').textContent = `つづきから ― ${LESSONS.indexOf(next) + 1}. ${next.title}`;
+  $('goContinue').onclick = () => openLesson(next);
+  document.querySelector('[data-wak="share"]').dataset.wakText = `チェス入門 ${done.length}/${LESSONS.length} レッスンクリア #T_OF`;
+}
+
+function renderList() {
+  const done = loadDone(), box = $('lessons');
+  box.textContent = '';
+  let ch = 0;
+  LESSONS.forEach((L, i) => {
+    if (L.ch !== ch) {
+      ch = L.ch;
+      const h = document.createElement('h3');
+      h.textContent = `第 ${ch} 章 ${CHAPTERS[ch - 1]}`;
+      box.appendChild(h);
+    }
+    const b = document.createElement('button');
+    b.className = 'lrow';
+    for (const [tag, text] of [['b', i + 1], ['span', L.title], ['i', done.includes(L.id) ? '✓' : '']]) {
+      const e = document.createElement(tag);
+      e.textContent = text;
+      b.appendChild(e);
+    }
+    b.onclick = () => openLesson(L);
+    box.appendChild(b);
+  });
+}
+
+function openFree() {
+  mode = 'free'; lesson = null;
+  show('play');
+  for (const id of ['intro', 'panel', 'choices']) $(id).hidden = true;
+  $('hud').hidden = false;
+  reset();
+}
+
+function openLesson(L) {
+  mode = 'lesson';
+  lesson = { L, ti: 0 };
+  show('play');
+  $('intro').hidden = false; $('intro').open = true;
+  $('panel').hidden = false; $('hud').hidden = true;
+  $('introTitle').textContent = `第 ${L.ch} 章 ${CHAPTERS[L.ch - 1]}　${LESSONS.indexOf(L) + 1}. ${L.title}`;
+  $('introText').textContent = L.text;
+  startTask();
+}
+
+const say = (text, cls = '') => { $('taskMsg').textContent = text; $('taskMsg').className = 'msg ' + cls; };
+const curStep = () => stepsOf(lesson.t)[lesson.si];
+
+function renderPanel() {
+  const { L, t, ti } = lesson;
+  $('taskProg').textContent = `${ti + 1}/${L.tasks.length}`;
+  $('taskQ').textContent = curStep().q || t.q;
+}
+
+async function startTask() {
+  const L = lesson, t = L.L.tasks[L.ti];
+  Object.assign(L, { t, si: 0, mist: 0, moves: 0, live: false, solved: false });
+  reset(t.fen);
+  const g0 = gen;
+  say('');
+  renderPanel();
+  $('hintBtn').hidden = false; $('nextBtn').hidden = true;
+  const box = $('choices');
+  box.textContent = '';
+  box.hidden = t.goal !== 'quiz';
+  if (t.goal === 'quiz') {
+    t.choices.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.textContent = c;
+      b.onclick = () => answer(i);
+      box.appendChild(b);
+    });
+    return;
+  }
+  busy = true;
+  for (const u of [].concat(t.pre || [])) {
+    await sleep(400);
+    if (g0 !== gen) return;
+    if (!(await move(moves(state).find((m) => toUci(m) === u)))) return;
+  }
+  busy = false;
+  L.live = true;
+}
+
+function showLessonHint() {
+  const step = curStep(), t = lesson.t;
+  const text = step.hint || t.hint;
+  say(text ? 'ヒント：' + text : 'よく見て、もう一度');
+  showHint(step.hintSq || t.hintSq || []);
+}
+
+// 白の手 m を判定する。ちがう手は動かさず、ひとこと出す
+async function tryLesson(m) {
+  const L = lesson, t = L.t, g0 = gen, steps = stepsOf(t);
+  if (t.goal !== 'eat') {
+    const r = judgeStep(steps[L.si], state, m);
+    if (!r.ok) {
+      select(-1); sfx('bad'); say(r.msg);
+      if (++L.mist >= 2) showLessonHint();
+      return;
+    }
+  }
+  L.live = false;
+  showHint([]); say('');
+  if (!(await move(m))) return;
+  if (t.goal === 'eat') {
+    state = { ...state, turn: 'w', ep: -1 }; // 黒は動かない
+    L.moves++;
+    if (eaten(state)) return solved('できた！');
+    if (L.moves >= t.limit) {
+      sfx('bad'); say('手数オーバー。もう一度');
+      await sleep(1300);
+      if (g0 === gen) startTask();
+      return;
+    }
+    say(`あと ${t.limit - L.moves} 手まで`);
+    busy = false; L.live = true;
+    return;
+  }
+  checkSide = inCheck(state, 'b') ? 'b' : null;
+  if (checkSide) sfx('check');
+  const step = steps[L.si];
+  if (L.si === steps.length - 1) return solved(GOAL_WORD[step.goal]);
+  sfx('ok'); say('いいね！ つぎは？', 'ok');
+  if (step.reply) {
+    await sleep(400);
+    if (g0 !== gen) return;
+    if (!(await move(moves(state).find((x) => toUci(x) === step.reply)))) return;
+    checkSide = inCheck(state, 'w') ? 'w' : null;
+  } else {
+    state = { ...state, turn: 'w', ep: -1 };
+  }
+  L.si++;
+  renderPanel();
+  busy = false; L.live = true;
+}
+
+function answer(i) {
+  const L = lesson;
+  if (L.solved) return;
+  if (i !== L.t.answer) {
+    sfx('bad'); say('ちがうみたい。もう一度');
+    if (++L.mist >= 2) showLessonHint();
+    return;
+  }
+  [...$('choices').children].forEach((b, k) => { b.disabled = true; b.classList.toggle('right', k === i); });
+  solved('できた！');
+}
+
+function solved(word) {
+  const L = lesson, last = L.ti === L.L.tasks.length - 1;
+  L.solved = true; L.live = false; busy = true;
+  showHint([]);
+  $('hintBtn').hidden = true;
+  const next = LESSONS[LESSONS.indexOf(L.L) + 1];
+  if (last) {
+    markDone(L.L.id);
+    sfx('clear');
+    say(`${word || 'できた！'} レッスンクリア！`, 'ok');
+  } else {
+    sfx('ok');
+    say(word || 'できた！', 'ok');
+  }
+  $('nextBtn').textContent = !last ? '次へ' : next ? '次のレッスンへ' : '一覧へ';
+  $('nextBtn').hidden = false;
+  $('nextBtn').onclick = () => {
+    if (!last) { L.ti++; startTask(); } else if (next) openLesson(next); else show('list');
+  };
+}
+
+$('hintBtn').onclick = showLessonHint;
+$('retryBtn').onclick = () => startTask();
+$('listBtn').onclick = () => show('list');
+$('listBack').onclick = () => show('title');
+$('freeBack').onclick = () => show('title');
+$('goList').onclick = () => show('list');
+$('goFree').onclick = openFree;
+const soundBtn = $('soundBtn');
+const showSound = () => { soundBtn.textContent = isOn() ? '音 ON' : '音 OFF'; };
+soundBtn.onclick = () => { setOn(!isOn()); showSound(); sfx('select'); };
+showSound();
+
 // 縦画面でも盤が入る距離にする。ユーザーが寄せた分は resize で保つ
 let fit = 0;
 function fitCamera(force) {
+  if (!stage.clientWidth) return; // 盤を隠しているあいだは測らない
   const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -301,7 +545,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (o) onTap(o.userData.sq);
 });
 
-document.getElementById('restart').addEventListener('click', reset);
+$('restart').addEventListener('click', () => reset());
 new ResizeObserver(() => fitCamera(false)).observe(stage);
 
 // ---- 毎フレーム ----
@@ -342,4 +586,5 @@ function frame_(now) {
 }
 
 reset();
+show('title');
 requestAnimationFrame(frame_);

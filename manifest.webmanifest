@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "chess-3d — 立体のチェス",
+  "name": "chess-3d — チェス入門：ルールを 1 から",
   "short_name": "chess-3d",
-  "description": "3D の盤で 2 人で指すチェス",
+  "description": "立体の盤でチェスを 1 から学べる入門。駒の動かし方からチェックメイトまで、触って覚える。2 人で自由に指すこともできる。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

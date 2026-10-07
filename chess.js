@@ -49,10 +49,11 @@ export function attacked(board, sq, by) {
 
 export function inCheck(s, c = s.turn) {
   const k = s.board.findIndex((p) => p && p.t === 'k' && p.c === c);
+  if (k < 0) return false; // キングのいない練習用の局面
   return attacked(s.board, k, c === 'w' ? 'b' : 'w');
 }
 
-function pseudo(s) {
+export function pseudo(s) {
   const { board, turn, castle, ep } = s;
   const opp = turn === 'w' ? 'b' : 'w';
   const out = [];
@@ -135,9 +136,37 @@ export function legalMoves(s) {
   return pseudo(s).filter((m) => !inCheck(apply(s, m), s.turn));
 }
 
+// 指せる手。どちらかのキングがいない練習用の局面は、チェックの考えを入れず pseudo をそのまま使う
+export function moves(s) {
+  const has = (c) => s.board.some((p) => p && p.t === 'k' && p.c === c);
+  return has('w') && has('b') ? legalMoves(s) : pseudo(s);
+}
+
+// 升の名前（0 → 'a1'）と、手の UCI（from と to だけ。プロモーションはいつもクイーンなので書かない）
+export const sqName = (sq) => 'abcdefgh'[sq & 7] + ((sq >> 3) + 1);
+export const toUci = (m) => sqName(m.from) + sqName(m.to);
+
+// FEN → 局面。手数の欄は読み捨てる
+export function fromFEN(fen) {
+  const [rows, turn, cas = '-', ep = '-'] = fen.split(' ');
+  const board = Array(64).fill(null);
+  rows.split('/').forEach((row, i) => {
+    let f = 0;
+    for (const ch of row) {
+      if (ch >= '1' && ch <= '8') f += +ch;
+      else board[(7 - i) * 8 + f++] = { t: ch.toLowerCase(), c: ch === ch.toLowerCase() ? 'b' : 'w' };
+    }
+  });
+  return {
+    board, turn,
+    castle: { wK: cas.includes('K'), wQ: cas.includes('Q'), bK: cas.includes('k'), bQ: cas.includes('q') },
+    ep: ep === '-' ? -1 : 'abcdefgh'.indexOf(ep[0]) + (ep[1] - 1) * 8,
+  };
+}
+
 // 'play' | 'check' | 'checkmate' | 'stalemate'
 export function status(s) {
-  const any = legalMoves(s).length > 0, chk = inCheck(s);
+  const any = moves(s).length > 0, chk = inCheck(s);
   return any ? (chk ? 'check' : 'play') : (chk ? 'checkmate' : 'stalemate');
 }
 
@@ -145,6 +174,9 @@ export function status(s) {
 if (typeof process !== 'undefined' && process.argv[1] && process.argv[1].endsWith('chess.js')) {
   const s = initial();
   console.log('初期局面の合法手:', legalMoves(s).length);
+  const f = fromFEN('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+  console.log('FEN と UCI:', moves(f).map(toUci).filter((u) => u.startsWith('e1')).join(' '));
+  console.log('キングなしで inCheck:', inCheck(fromFEN('8/8/8/8/8/8/8/R7 w - - 0 1')));
   const perft = (st, d) => d === 0 ? 1 : legalMoves(st).reduce((n, m) => n + perft(apply(st, m), d - 1), 0);
   console.log('perft 1..3 (20, 400, 8902):', perft(s, 1), perft(s, 2), perft(s, 3));
 }
