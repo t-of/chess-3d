@@ -1,0 +1,345 @@
+import * as THREE from './vendor/three.module.min.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import { initial, legalMoves, apply, status, inCheck } from './chess.js';
+
+WebAppKit.init({ title: 'chess-3d', text: '3D の盤で 2 人で指すチェス' });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
+
+// ---- シーン ----
+const stage = document.getElementById('stage');
+const hudText = document.getElementById('hudText');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2b2118);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enablePan = false;
+controls.enableDamping = true;
+controls.minDistance = 6;
+controls.maxDistance = 24;
+controls.maxPolarAngle = 1.45;
+controls.addEventListener('start', () => { camTween = null; }); // 触ったら自動回転をやめる
+
+scene.add(new THREE.HemisphereLight(0xfff2dd, 0x40342a, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(5, 11, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9 });
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x1d1610, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.4;
+ground.receiveShadow = true;
+scene.add(ground);
+const frame = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.4, 9.2), new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.6 }));
+frame.position.y = -0.4;
+frame.receiveShadow = true;
+scene.add(frame);
+
+// 升 → 盤上の位置（白が +z 側）
+const posOf = (sq) => new THREE.Vector3((sq & 7) - 3.5, 0, 3.5 - (sq >> 3));
+
+const tiles = [];
+const markers = [];
+const markGeo = new THREE.CircleGeometry(0.2, 24);
+const ringGeo = new THREE.RingGeometry(0.34, 0.46, 32);
+for (let sq = 0; sq < 64; sq++) {
+  const dark = ((sq >> 3) + (sq & 7)) % 2 === 0;
+  const t = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 1), new THREE.MeshStandardMaterial({ color: dark ? 0x7a4f32 : 0xdcc08f, roughness: 0.5 }));
+  t.position.copy(posOf(sq)).setY(-0.1);
+  t.receiveShadow = true;
+  t.userData.sq = sq;
+  scene.add(t);
+  tiles.push(t);
+  const m = new THREE.Mesh(markGeo, new THREE.MeshBasicMaterial({ color: 0x6bff9a, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.copy(posOf(sq)).setY(0.02);
+  m.visible = false;
+  scene.add(m);
+  markers.push(m);
+}
+const selRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd35c, transparent: true, opacity: 0.9, depthWrite: false }));
+selRing.rotation.x = -Math.PI / 2;
+selRing.visible = false;
+scene.add(selRing);
+
+// ---- 駒の形（プリミティブの組み合わせ）----
+const lathe = (pts) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 24);
+const BASE = [[0, 0], [0.36, 0], [0.36, 0.07], [0.27, 0.17]];
+const sphere = (r, sx = 1, sy = 1) => new THREE.SphereGeometry(r, 16, 12).scale(sx, sy, sx);
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+// 各部品: [geometry, x, y, z, rotX]
+const SHAPES = {
+  p: () => [[lathe([...BASE, [0.13, 0.4], [0.2, 0.45], [0.12, 0.5], [0, 0.5]])], [sphere(0.18), 0, 0.62, 0]],
+  r: () => [
+    [lathe([...BASE, [0.22, 0.6], [0.3, 0.66], [0.3, 0.82], [0, 0.82]])],
+    ...[0, 1, 2, 3].map((i) => [box(0.13, 0.16, 0.13), Math.cos(i * 1.571 + 0.785) * 0.22, 0.9, Math.sin(i * 1.571 + 0.785) * 0.22]),
+  ],
+  n: () => [
+    [lathe([...BASE, [0.2, 0.3], [0, 0.3]])],
+    [box(0.34, 0.6, 0.3), 0, 0.58, 0],
+    [box(0.26, 0.28, 0.5), 0, 0.9, 0.18, 0.35],
+    [box(0.1, 0.5, 0.2), 0, 0.82, -0.2],
+    [new THREE.ConeGeometry(0.06, 0.2, 8), -0.09, 1.1, -0.02],
+    [new THREE.ConeGeometry(0.06, 0.2, 8), 0.09, 1.1, -0.02],
+  ],
+  b: () => [[lathe([...BASE, [0.16, 0.5], [0.24, 0.58], [0.12, 0.66], [0, 0.66]])], [sphere(0.2, 1, 1.5), 0, 0.88, 0], [sphere(0.07), 0, 1.22, 0]],
+  q: () => [
+    [lathe([...BASE, [0.2, 0.6], [0.3, 0.8], [0.34, 1.0], [0.16, 1.05], [0, 1.05]])],
+    [sphere(0.1), 0, 1.2, 0],
+    ...Array.from({ length: 8 }, (_, i) => [sphere(0.07), Math.cos(i * 0.785) * 0.28, 1.05, Math.sin(i * 0.785) * 0.28]),
+  ],
+  k: () => [
+    [lathe([...BASE, [0.2, 0.7], [0.32, 0.95], [0.3, 1.1], [0.14, 1.15], [0, 1.15]])],
+    [box(0.1, 0.4, 0.1), 0, 1.38, 0],
+    [box(0.3, 0.1, 0.1), 0, 1.42, 0],
+  ],
+};
+const shapeCache = {};
+const partsOf = (t) => shapeCache[t] || (shapeCache[t] = SHAPES[t]());
+const COLOR = { w: 0xf2e8d5, b: 0x3b3430 };
+
+function makePiece(p, sq) {
+  const mat = new THREE.MeshStandardMaterial({ color: COLOR[p.c], roughness: 0.35, metalness: 0.1, emissive: 0x000000 });
+  const g = new THREE.Group();
+  for (const [geo, x = 0, y = 0, z = 0, rx = 0] of partsOf(p.t)) {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.x = rx;
+    m.castShadow = true;
+    g.add(m);
+  }
+  g.rotation.y = p.t === 'n' && p.c === 'w' ? Math.PI : 0; // ナイトは相手の側を向く
+  g.userData = { sq, mat, piece: p, yaw: g.rotation.y };
+  g.position.copy(posOf(sq));
+  scene.add(g);
+  return g;
+}
+
+// ---- アニメーション ----
+let anims = [];
+let camTween = null;
+const ease = (u) => u * u * (3 - 2 * u);
+function tween(dur, fn, delay = 0) {
+  return new Promise((resolve) => anims.push({ t0: performance.now() + delay * 1000, dur: dur * 1000, fn, resolve }));
+}
+// from → to を放物線で動かす。h は跳ねる高さ
+function arc(g, to, h, dur, delay = 0, extra) {
+  const from = g.position.clone();
+  return tween(dur, (u) => {
+    g.position.lerpVectors(from, to, ease(u));
+    g.position.y += 4 * h * u * (1 - u);
+    if (extra) extra(u);
+  }, delay);
+}
+
+// ---- ゲーム ----
+let state, groups, graveyard, selected, targets, busy, gen = 0, checkSide = null;
+
+function reset() {
+  gen++;
+  anims = [];
+  if (groups) for (const g of [...groups.values(), ...graveyard]) scene.remove(g);
+  state = initial();
+  groups = new Map();
+  graveyard = [];
+  state.board.forEach((p, sq) => { if (p) groups.set(sq, makePiece(p, sq)); });
+  selected = -1; targets = []; busy = false; checkSide = null;
+  showSelection();
+  hudText.textContent = '白の番';
+  camTween = null;
+  const d = camera.position.length();
+  camera.position.set(0, d * 0.75, d * 0.66);
+  controls.update();
+  fitCamera(true);
+}
+
+function showSelection() {
+  selRing.visible = selected >= 0;
+  if (selected >= 0) selRing.position.copy(posOf(selected)).setY(0.02);
+  markers.forEach((m, sq) => {
+    const t = targets.find((x) => x.to === sq);
+    m.visible = !!t;
+    if (t) {
+      const cap = state.board[sq] || t.ep;
+      m.material.color.setHex(cap ? 0xff6b5c : 0x6bff9a);
+      m.scale.setScalar(cap ? 1.6 : 1);
+    }
+  });
+}
+
+function select(sq) {
+  // 前に選んでいた駒は元の姿勢に戻す
+  const prev = groups.get(selected);
+  if (prev) { prev.position.y = 0; prev.rotation.set(0, prev.userData.yaw, 0); }
+  selected = sq;
+  targets = sq >= 0 ? legalMoves(state).filter((m) => m.from === sq) : [];
+  showSelection();
+}
+
+function onTap(sq) {
+  if (busy) return;
+  const p = state.board[sq];
+  const m = targets.find((x) => x.to === sq);
+  if (m) return play(m);
+  if (p && p.c === state.turn && sq !== selected) select(sq);
+  else select(-1);
+}
+
+async function play(m) {
+  const g0 = gen;
+  busy = true;
+  const mover = groups.get(m.from);
+  const wasSel = selected;
+  select(-1);
+  mover.userData.sq = m.to;
+  const knight = mover.userData.piece.t === 'n';
+  const dur = knight ? 0.8 : 0.55;
+  const jobs = [];
+  groups.delete(m.from);
+
+  const capSq = m.ep ? m.to + (state.turn === 'w' ? -8 : 8) : m.to;
+  const victim = groups.get(capSq);
+  if (victim) {
+    groups.delete(capSq);
+    const side = victim.userData.piece.c;
+    const n = graveyard.filter((x) => x.userData.piece.c === side).length;
+    const slot = new THREE.Vector3((side === 'w' ? -5.6 : 5.6) + (side === 'w' ? -1 : 1) * (n % 2) * 0.7, -0.12, -3.2 + (n >> 1) * 0.8);
+    graveyard.push(victim);
+    // 取られた駒は、動いてきた駒が当たるころに倒れて盤の脇へ飛ぶ
+    jobs.push(arc(victim, slot, 2.2, 0.8, dur * 0.7, (u) => {
+      victim.rotation.z = (side === 'w' ? 1 : -1) * u * 1.5;
+      victim.scale.setScalar(1 - u * 0.3);
+    }));
+  }
+  groups.set(m.to, mover);
+  jobs.push(arc(mover, posOf(m.to), knight ? 1.8 : 0.3, dur, 0, (u) => {
+    if (knight) mover.rotation.y = mover.userData.yaw + Math.sin(u * Math.PI) * 0.4;
+  }));
+  if (m.castle) {
+    const rank = m.from & ~7;
+    const [rf, rt] = m.castle === 'K' ? [rank + 7, rank + 5] : [rank, rank + 3];
+    const rook = groups.get(rf);
+    groups.delete(rf); groups.set(rt, rook); rook.userData.sq = rt;
+    jobs.push(arc(rook, posOf(rt), 0.7, dur, 0.1));
+  }
+  await Promise.all(jobs);
+  if (g0 !== gen) return;
+
+  if (m.promo) {
+    // ポーンをクイーンに取り替え、ぽんと膨らませる
+    scene.remove(mover);
+    const q = makePiece({ t: 'q', c: mover.userData.piece.c }, m.to);
+    groups.set(m.to, q);
+    await tween(0.35, (u) => q.scale.setScalar(u < 0.6 ? 0.6 + u * 1.0 : 1.2 - (u - 0.6) * 0.5));
+    if (g0 !== gen) return;
+    q.scale.setScalar(1);
+  }
+  state = apply(state, m);
+  const st = status(state);
+  const who = state.turn === 'w' ? '白' : '黒';
+  checkSide = st === 'check' || st === 'checkmate' ? state.turn : null;
+  hudText.textContent = st === 'checkmate' ? `チェックメイト！ ${state.turn === 'w' ? '黒' : '白'}の勝ち`
+    : st === 'stalemate' ? 'ステイルメイト ― 引き分け'
+    : st === 'check' ? `${who}の番 ― チェック！` : `${who}の番`;
+  busy = st === 'checkmate' || st === 'stalemate';
+  if (!busy) turnCamera();
+}
+
+// 手番の側へカメラをゆっくり回す（高さと距離はそのまま、真上から見て回すだけ）
+function turnCamera() {
+  const goal = state.turn === 'w' ? 0 : Math.PI;
+  const cur = Math.atan2(camera.position.x, camera.position.z);
+  let d = goal - cur;
+  d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI;
+  if (Math.abs(d) < 0.05) return;
+  camTween = { start: camera.position.clone(), d, t0: performance.now() + 250, dur: 1800 };
+}
+
+// 縦画面でも盤が入る距離にする。ユーザーが寄せた分は resize で保つ
+let fit = 0;
+function fitCamera(force) {
+  const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2;
+  const need = 6.6 / Math.min(Math.tan(vf) * camera.aspect, Math.tan(vf)) * 1.0;
+  const dist = camera.position.length();
+  const next = force || !fit ? need : dist * need / fit;
+  camera.position.multiplyScalar(next / dist);
+  fit = need;
+  controls.update();
+}
+
+// ---- 入力（動かしていないタップだけを選択とみなす）----
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let down = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8 || performance.now() - down.t > 500) return;
+  down = null;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects([...groups.values(), ...tiles], true)[0];
+  if (!hit) return;
+  let o = hit.object;
+  while (o && o.userData.sq === undefined) o = o.parent;
+  if (o) onTap(o.userData.sq);
+});
+
+document.getElementById('restart').addEventListener('click', reset);
+new ResizeObserver(() => fitCamera(false)).observe(stage);
+
+// ---- 毎フレーム ----
+function frame_(now) {
+  const t = now / 1000;
+  anims = anims.filter((a) => {
+    const u = (now - a.t0) / a.dur;
+    if (u < 0) return true;
+    a.fn(Math.min(u, 1));
+    if (u >= 1) { a.resolve(); return false; }
+    return true;
+  });
+  if (camTween) {
+    const u = (now - camTween.t0) / camTween.dur;
+    if (u >= 0) {
+      const a = camTween.d * ease(Math.min(u, 1));
+      const s = camTween.start;
+      camera.position.set(s.x * Math.cos(a) + s.z * Math.sin(a), s.y, -s.x * Math.sin(a) + s.z * Math.cos(a));
+      if (u >= 1) camTween = null;
+    }
+  }
+  const sel = groups.get(selected);
+  if (sel && !busy) { // 選んだ駒は少し浮いてゆらぐ
+    sel.position.y = 0.25 + Math.sin(t * 3) * 0.05;
+    sel.rotation.z = Math.sin(t * 2.3) * 0.06;
+    sel.rotation.x = Math.cos(t * 1.9) * 0.04;
+  }
+  const pulse = 0.55 + 0.35 * Math.sin(t * 5);
+  markers.forEach((m) => { if (m.visible) m.material.opacity = pulse; });
+  for (const [, g] of groups) {
+    const hot = checkSide && g.userData.piece.t === 'k' && g.userData.piece.c === checkSide;
+    g.userData.mat.emissive.setHex(hot ? 0xff1a1a : 0);
+    g.userData.mat.emissiveIntensity = hot ? 0.5 + 0.5 * Math.sin(t * 6) : 0;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame_);
+}
+
+reset();
+requestAnimationFrame(frame_);
